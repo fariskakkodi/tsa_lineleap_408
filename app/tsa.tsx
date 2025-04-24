@@ -5,14 +5,14 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Platform,
   Alert,
+  Platform,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { useRouter } from 'expo-router';
 import { db } from '../firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
 
 export default function TSAScreen() {
   const router = useRouter();
@@ -22,6 +22,7 @@ export default function TSAScreen() {
   const [startTime, setStartTime] = useState(new Date());
   const [endTime, setEndTime] = useState(new Date());
   const [slotCount, setSlotCount] = useState(5);
+  const [passengerCount, setPassengerCount] = useState('');
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
@@ -30,8 +31,8 @@ export default function TSAScreen() {
   const [confirmed, setConfirmed] = useState(false);
 
   const handleSubmit = async () => {
-    if (!flightNumber) {
-      Alert.alert('Please enter a flight number');
+    if (!flightNumber || !passengerCount) {
+      Alert.alert('Please fill out all fields.');
       return;
     }
 
@@ -42,76 +43,72 @@ export default function TSAScreen() {
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
         slotCount,
+        passengerLimit: parseInt(passengerCount),
+        slotBookings: {},
       });
+
       setConfirmed(true);
-    } catch (e) {
-      console.error('Error adding flight:', e);
-      Alert.alert('Failed to save flight.');
+      setTimeout(() => {
+        setConfirmed(false);
+        router.replace('/');
+      }, 2000);
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', 'Failed to save flight');
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Flight Number</Text>
       <TextInput
+        placeholder="Flight Number"
+        placeholderTextColor="#888"
         style={styles.input}
-        placeholder="e.g. AI202"
-        placeholderTextColor="#aaa"
         value={flightNumber}
         onChangeText={setFlightNumber}
       />
 
-      <Text style={styles.label}>Select Date</Text>
       <TouchableOpacity style={styles.input} onPress={() => setShowDatePicker(true)}>
-        <Text style={styles.text}>{date.toDateString()}</Text>
+        <Text style={styles.inputText}>{date.toDateString()}</Text>
       </TouchableOpacity>
       {showDatePicker && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          display="default"
-          onChange={(_, selectedDate) => {
-            setShowDatePicker(Platform.OS === 'ios');
-            if (selectedDate) setDate(selectedDate);
-          }}
-        />
+        <DateTimePicker value={date} mode="date" onChange={(_, selected) => {
+          setShowDatePicker(false);
+          if (selected) setDate(selected);
+        }} />
       )}
 
-      <Text style={styles.label}>Start Time</Text>
       <TouchableOpacity style={styles.input} onPress={() => setShowStartPicker(true)}>
-        <Text style={styles.text}>{startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        <Text style={styles.inputText}>{startTime.toLocaleTimeString()}</Text>
       </TouchableOpacity>
       {showStartPicker && (
-        <DateTimePicker
-          value={startTime}
-          mode="time"
-          display="default"
-          onChange={(_, selected) => {
-            setShowStartPicker(Platform.OS === 'ios');
-            if (selected) setStartTime(selected);
-          }}
-        />
+        <DateTimePicker value={startTime} mode="time" onChange={(_, selected) => {
+          setShowStartPicker(false);
+          if (selected) setStartTime(selected);
+        }} />
       )}
 
-      <Text style={styles.label}>End Time</Text>
       <TouchableOpacity style={styles.input} onPress={() => setShowEndPicker(true)}>
-        <Text style={styles.text}>{endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        <Text style={styles.inputText}>{endTime.toLocaleTimeString()}</Text>
       </TouchableOpacity>
       {showEndPicker && (
-        <DateTimePicker
-          value={endTime}
-          mode="time"
-          display="default"
-          onChange={(_, selected) => {
-            setShowEndPicker(Platform.OS === 'ios');
-            if (selected) setEndTime(selected);
-          }}
-        />
+        <DateTimePicker value={endTime} mode="time" onChange={(_, selected) => {
+          setShowEndPicker(false);
+          if (selected) setEndTime(selected);
+        }} />
       )}
 
-      <Text style={styles.label}>Number of Time Slots</Text>
+      <TextInput
+        placeholder="Number of Passengers"
+        placeholderTextColor="#888"
+        style={styles.input}
+        keyboardType="numeric"
+        value={passengerCount}
+        onChangeText={setPassengerCount}
+      />
+
       <TouchableOpacity style={styles.input} onPress={() => setShowSlotPicker(true)}>
-        <Text style={styles.text}>{slotCount}</Text>
+        <Text style={styles.inputText}>Time Slots: {slotCount}</Text>
       </TouchableOpacity>
       {showSlotPicker && (
         <Picker
@@ -121,25 +118,19 @@ export default function TSAScreen() {
             setSlotCount(value);
           }}
         >
-          {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => (
-            <Picker.Item key={num} label={`${num}`} value={num} />
+          {[...Array(10).keys()].map((i) => (
+            <Picker.Item key={i + 1} label={`${i + 1}`} value={i + 1} />
           ))}
         </Picker>
       )}
 
-      <View style={{ marginTop: 30 }}>
-        <TouchableOpacity
-          style={styles.enterButton}
-          onPress={handleSubmit}
-          disabled={confirmed}
-        >
-          <Text style={styles.enterText}>{confirmed ? 'Confirmed' : 'Enter'}</Text>
-        </TouchableOpacity>
+      <TouchableOpacity style={styles.button} onPress={handleSubmit}>
+        <Text style={styles.buttonText}>{confirmed ? 'Confirmed!' : 'Enter'}</Text>
+      </TouchableOpacity>
 
-        <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/')}>
-          <Text style={styles.backText}>Back to Home</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/')}>
+        <Text style={styles.backText}>Back to Home</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -151,41 +142,33 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
   },
-  label: {
-    color: '#fff',
-    marginTop: 15,
-    marginBottom: 5,
-    fontSize: 16,
-  },
   input: {
     backgroundColor: '#222',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
+    color: '#fff',
+    padding: 12,
+    marginBottom: 15,
     borderRadius: 10,
-    marginBottom: 10,
   },
-  text: {
+  inputText: {
     color: '#fff',
   },
-  enterButton: {
+  button: {
     backgroundColor: '#0af',
     paddingVertical: 15,
     borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 15,
+    marginTop: 10,
   },
-  enterText: {
+  buttonText: {
     color: '#fff',
     fontSize: 18,
   },
   backButton: {
-    backgroundColor: '#0af',
-    paddingVertical: 12,
-    borderRadius: 10,
+    marginTop: 20,
     alignItems: 'center',
   },
   backText: {
-    color: '#fff',
+    color: '#0af',
     fontSize: 16,
   },
 });

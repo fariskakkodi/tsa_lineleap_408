@@ -1,63 +1,70 @@
+// File: app/slotSelect.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { db, auth } from '../firebaseConfig';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export default function SlotSelectScreen() {
-  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
   const [slots, setSlots] = useState<string[]>([]);
+  const [flightNumber, setFlightNumber] = useState('');
 
   useEffect(() => {
-    const fetchFlight = async () => {
-      try {
-        const flightRef = doc(db, 'flights', id);
-        const snapshot = await getDoc(flightRef);
+    const generateSlots = async () => {
+      if (!id) return;
 
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          const start = new Date(data.startTime);
-          const end = new Date(data.endTime);
-          const count = data.slotCount;
+      const flightRef = doc(db, 'flights', id);
+      const snapshot = await getDoc(flightRef);
 
-          const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-          const gap = totalMinutes / count;
+      if (!snapshot.exists()) return;
 
-          const tempSlots: string[] = [];
-          let current = new Date(start);
+      const data = snapshot.data();
+      setFlightNumber(data.flightNumber);
 
-          for (let i = 0; i < count; i++) {
-            const slotStart = new Date(current);
-            current.setMinutes(current.getMinutes() + gap);
-            const slotEnd = new Date(current);
+      const start = new Date(data.startTime);
+      const end = new Date(data.endTime);
+      const total = data.slotCount;
+      const diff = (end.getTime() - start.getTime()) / total;
 
-            const formatted = `${slotStart.toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })} - ${slotEnd.toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}`;
-
-            tempSlots.push(formatted);
-          }
-
-          setSlots(tempSlots);
-        }
-
-        setLoading(false);
-      } catch (error) {
-        console.error('Error loading flight info:', error);
-        setLoading(false);
+      const tempSlots: string[] = [];
+      for (let i = 0; i < total; i++) {
+        const s = new Date(start.getTime() + i * diff);
+        const e = new Date(start.getTime() + (i + 1) * diff);
+        tempSlots.push(`${s.toLocaleTimeString()} - ${e.toLocaleTimeString()}`);
       }
+      setSlots(tempSlots);
     };
 
-    fetchFlight();
+    generateSlots();
   }, [id]);
 
-  const handleSlotSelect = (slot: string) => {
+  const handleSelect = async (slot: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const ref = doc(db, 'flights', id);
+    const snapshot = await getDoc(ref);
+    const data = snapshot.data();
+
+    if (!data) {
+      Alert.alert('Error', 'Flight data not found.');
+      return;
+    }
+
+    const slotBookings = data.slotBookings || {};
+    const currentCount = slotBookings[slot] || 0;
+
+    if (currentCount >= data.passengerLimit / data.slotCount) {
+      Alert.alert('Slot Full', 'This time slot is already full. Please choose another.');
+      return;
+    }
+
+    slotBookings[slot] = currentCount + 1;
+    await updateDoc(ref, { slotBookings });
+
     router.push({
       pathname: '/qrCode',
       params: { flightId: id, slot },
@@ -65,22 +72,18 @@ export default function SlotSelectScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color="#0af" />
-      ) : (
-        <>
-          <Text style={styles.title}>Select a Time Slot</Text>
-          <ScrollView>
-            {slots.map((slot, index) => (
-              <TouchableOpacity key={index} style={styles.slotButton} onPress={() => handleSlotSelect(slot)}>
-                <Text style={styles.slotText}>{slot}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </>
-      )}
-    </View>
+    <ScrollView style={styles.container}>
+      <Text style={styles.header}>Select Slot for {flightNumber}</Text>
+      {slots.map((slot, index) => (
+        <TouchableOpacity
+          key={index}
+          style={styles.slotButton}
+          onPress={() => handleSelect(slot)}
+        >
+          <Text style={styles.slotText}>{slot}</Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -88,10 +91,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    padding: 20,
     paddingTop: 60,
+    paddingHorizontal: 20,
   },
-  title: {
+  header: {
     color: '#fff',
     fontSize: 20,
     marginBottom: 20,
@@ -99,14 +102,13 @@ const styles = StyleSheet.create({
   },
   slotButton: {
     backgroundColor: '#0af',
-    padding: 15,
+    paddingVertical: 15,
     borderRadius: 10,
-    marginBottom: 15,
+    marginBottom: 10,
     alignItems: 'center',
   },
   slotText: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: '#fff',
+    fontSize: 16,
   },
 });
